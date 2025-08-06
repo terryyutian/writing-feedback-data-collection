@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "writing-feedback"
+version = "0.1.0"
+description = "A web application for writing feedback data collection"
+authors = [
+    { name = "Terry", email = "ytian126@asu.edu" }
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "pandas>=1.0.0",
+    "numpy>=1.18.0",
+    "streamlit",
+    "python-dotenv",
+]
+
+[tool.setuptools]
+packages = ["src"] 
