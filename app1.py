@@ -26,8 +26,8 @@ def initialize_session_state():
         "essay_start_time": None,  # NEW: Track when essay drafting page starts
         "time_up": False,
         "submitted": False,
-        "essay_text": ""
-        # DO NOT initialize "program_use_only" here
+        "essay_text": "",
+        "show_submit_confirmation": False 
     }
     for key, value in default_values.items():
         if key not in st.session_state:
@@ -220,7 +220,7 @@ def essay_drafting_page():
     # Set page layout to wide
     st.set_page_config(layout="wide")
     
-    # NEW: Initialize essay start time when page is first loaded
+    # Initialize essay start time when page is first loaded
     if st.session_state.essay_start_time is None:
         st.session_state.essay_start_time = time.time()
     
@@ -233,11 +233,10 @@ def essay_drafting_page():
             st.session_state.time_up = True
             return 0
         return remaining
-    
+
     # Back button
     if st.button("← Back", key="back_to_demographic"):
         st.session_state.page = "demographic"
-        # Reset essay start time if going back
         st.session_state.essay_start_time = None
         st.rerun()
 
@@ -251,7 +250,7 @@ def essay_drafting_page():
         background-color: #f9f9f9;
         overflow-y: auto;
         font-size: 16px;
-        box-sizing: border-box; /* Include padding and border in the element's total width and height */
+        box-sizing: border-box;
     }
     .timer-box {
         height: 50px;
@@ -275,7 +274,6 @@ def essay_drafting_page():
         display: flex;
         justify-content: center;
     }
-    /* Fix for text area height to match prompt box */
     .stTextArea textarea {
         height: 70vh !important;
         min-height: 70vh !important;
@@ -287,13 +285,25 @@ def essay_drafting_page():
         left: 10px;
         z-index: 100;
     }
+    .confirmation-dialog {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        z-index: 1000;
+        width: 400px;
+        text-align: center;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-    # Create two columns
+    # Create two columns for main content
     col1, col2 = st.columns([1, 2])
 
-    # Left Column: Writing Prompt Title and Prompt Box
     with col1:
         st.markdown("<div class='title-box'>Writing Prompt</div>", unsafe_allow_html=True)
         st.markdown("""
@@ -308,69 +318,73 @@ def essay_drafting_page():
         """, unsafe_allow_html=True)
 
     with col2:
-        # Timer placeholder
         timer_placeholder = st.empty()
-        
-        # Essay Text Area - Using a container to better control layout
-        essay_container = st.container()
-        with essay_container:
-            st.text_area(
-                label="Write your essay here:",
-                key="essay_text",
-                label_visibility="collapsed",
-                placeholder="Start typing here..."
-                # Height is now controlled by CSS
-            )
-
-        # Timer logic
-        remaining = get_time_remaining()
-        timer_placeholder.markdown(
-            f"<div class='timer-box'><span id='countdown'>{remaining//60:02}:{remaining%60:02}</span></div>",
-            unsafe_allow_html=True
+        st.text_area(
+            label="Write your essay here:",
+            key="essay_text",
+            label_visibility="collapsed",
+            placeholder="Start typing here..."
         )
+        col_submit1, col_submit2, col_submit3 = st.columns([1, 1, 1])
+        with col_submit2:
+            if st.button("Submit", use_container_width=True):
+                st.session_state.show_submit_confirmation = True
 
-        # JavaScript countdown with Streamlit integration
-        components.html(f"""
-        <script>
-        const endTime = Date.now() + {remaining * 1000};
-        const countdownEl = window.parent.document.getElementById("countdown");
-        function updateTimer() {{
-            const now = Date.now();
-            const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-            const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
-            const seconds = String(remaining % 60).padStart(2, '0');
-            countdownEl.innerText = minutes + ":" + seconds;
-            if (remaining <= 0) {{
-                clearInterval(timerInterval);
-                // Signal to Streamlit that time is up
-                const streamlitInput = window.parent.document.querySelector('input[data-testid="stTextInput"][type="text"]');
-                if (streamlitInput) {{
-                    streamlitInput.value = "true";
-                    streamlitInput.dispatchEvent(new Event("input", {{ bubbles: true }}));
-                }}
+    # Confirmation dialog
+    if st.session_state.show_submit_confirmation:
+        with st.container():
+            st.markdown("<div class='confirmation-dialog'>", unsafe_allow_html=True)
+            st.write("Are you sure you want to submit your essay?")
+            col_ok, col_cancel = st.columns(2)
+            with col_ok:
+                if st.button("OK", key="confirm_submit"):
+                    student_id = st.session_state.demographic_data.get("ASURite", "unknown_id")
+                    submit_time = time.time()
+                    writing_time_seconds = submit_time - st.session_state.essay_start_time
+                    writing_time_minutes = writing_time_seconds / 60
+                    essay_data_store(student_id.strip(), {
+                        "essay": st.session_state.essay_text,
+                        "writing_time": writing_time_minutes
+                    })
+                    st.session_state.submitted = True
+                    st.session_state.show_submit_confirmation = False
+                    st.session_state.page = "thank_you"
+                    st.rerun()
+            with col_cancel:
+                if st.button("Cancel", key="cancel_submit"):
+                    st.session_state.show_submit_confirmation = False
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # Timer logic
+    remaining = get_time_remaining()
+    timer_placeholder.markdown(
+        f"<div class='timer-box'><span id='countdown'>{remaining//60:02}:{remaining%60:02}</span></div>",
+        unsafe_allow_html=True
+    )
+
+    components.html(f"""
+    <script>
+    const endTime = Date.now() + {remaining * 1000};
+    const countdownEl = window.parent.document.getElementById("countdown");
+    function updateTimer() {{
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
+        const seconds = String(remaining % 60).padStart(2, '0');
+        countdownEl.innerText = minutes + ":" + seconds;
+        if (remaining <= 0) {{
+            clearInterval(timerInterval);
+            const streamlitInput = window.parent.document.querySelector('input[data-testid="stTextInput"][type="text"]');
+            if (streamlitInput) {{
+                streamlitInput.value = "true";
+                streamlitInput.dispatchEvent(new Event("input", {{ bubbles: true }}));
             }}
         }}
-        const timerInterval = setInterval(updateTimer, 1000);
-        </script>
-        """, height=0)
-
-        # Display submit button in a centered container
-        student_id = st.session_state.demographic_data.get("ASURite", "unknown_id")
-        
-        # Create a container for the submit button with proper centering
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("Submit", use_container_width=True):
-                # NEW: Calculate writing time
-                submit_time = time.time()
-                writing_time_seconds = submit_time - st.session_state.essay_start_time
-                writing_time_minutes = writing_time_seconds / 60  # Convert to minutes
-                
-                # Store the essay data with writing time
-                essay_data_store(student_id.strip(), {"essay": st.session_state.essay_text, "writing_time": writing_time_minutes})
-                st.session_state.submitted = True
-                st.session_state.page = "thank_you"
-                st.rerun()
+    }}
+    const timerInterval = setInterval(updateTimer, 1000);
+    </script>
+    """, height=0)
 
 def thank_you_page():
     """Display the thank you message after submission."""
