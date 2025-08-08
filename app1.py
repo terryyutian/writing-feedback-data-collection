@@ -33,6 +33,38 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
 
+@st.dialog("Confirm Submission")
+def submit_confirmation_dialog():
+    """Modal dialog for essay submission confirmation."""
+    st.write("Are you sure you want to submit your essay?")
+    st.write("Once submitted, you cannot make any changes.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("✅ OK", type="primary", use_container_width=True):
+            # Process the submission
+            student_id = st.session_state.demographic_data.get("ASURite", "unknown_id")
+            submit_time = time.time()
+            writing_time_seconds = submit_time - st.session_state.essay_start_time
+            writing_time_minutes = writing_time_seconds / 60
+            
+            essay_data_store(student_id.strip(), {
+                "essay": st.session_state.essay_text,
+                "writing_time": writing_time_minutes
+            })
+            
+            st.session_state.submitted = True
+            st.session_state.show_submit_confirmation = False
+            st.session_state.page = "thank_you"
+            st.rerun()
+    
+    with col2:
+        if st.button("❌ Cancel", use_container_width=True):
+            # Close dialog without doing anything
+            st.session_state.show_submit_confirmation = False
+            st.rerun()
+
 def study_info_page():
     """Display the study information page."""
     st.markdown("<h1 style='text-align: center;'>Study Information</h1>", unsafe_allow_html=True)
@@ -225,7 +257,7 @@ def essay_drafting_page():
         st.session_state.essay_start_time = time.time()
     
     TOTAL_TIME_SECONDS = 30 * 60  # 30 minutes
-
+    
     def get_time_remaining():
         elapsed = time.time() - st.session_state.start_time
         remaining = int(TOTAL_TIME_SECONDS - elapsed)
@@ -233,14 +265,14 @@ def essay_drafting_page():
             st.session_state.time_up = True
             return 0
         return remaining
-
+    
     # Back button
     if st.button("← Back", key="back_to_demographic"):
         st.session_state.page = "demographic"
         st.session_state.essay_start_time = None
         st.rerun()
-
-    # Inject CSS for styling
+    
+    # Inject CSS for styling (removed confirmation-dialog CSS since we're using st.dialog)
     st.markdown("""
     <style>
     .prompt-box, .essay-box {
@@ -285,25 +317,12 @@ def essay_drafting_page():
         left: 10px;
         z-index: 100;
     }
-    .confirmation-dialog {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background-color: white;
-        padding: 30px;
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        z-index: 1000;
-        width: 400px;
-        text-align: center;
-    }
     </style>
     """, unsafe_allow_html=True)
-
+    
     # Create two columns for main content
     col1, col2 = st.columns([1, 2])
-
+    
     with col1:
         st.markdown("<div class='title-box'>Writing Prompt</div>", unsafe_allow_html=True)
         st.markdown("""
@@ -316,7 +335,7 @@ def essay_drafting_page():
             <p><b>Format</b>: Times New Roman 12pt font, double spaced, spell-checked, and include a great title.</p>
         </div>
         """, unsafe_allow_html=True)
-
+    
     with col2:
         timer_placeholder = st.empty()
         st.text_area(
@@ -329,40 +348,19 @@ def essay_drafting_page():
         with col_submit2:
             if st.button("Submit", use_container_width=True):
                 st.session_state.show_submit_confirmation = True
-
-    # Confirmation dialog
+                st.rerun()
+    
+    # Show confirmation dialog if needed using st.dialog
     if st.session_state.show_submit_confirmation:
-        with st.container():
-            st.markdown("<div class='confirmation-dialog'>", unsafe_allow_html=True)
-            st.write("Are you sure you want to submit your essay?")
-            col_ok, col_cancel = st.columns(2)
-            with col_ok:
-                if st.button("OK", key="confirm_submit"):
-                    student_id = st.session_state.demographic_data.get("ASURite", "unknown_id")
-                    submit_time = time.time()
-                    writing_time_seconds = submit_time - st.session_state.essay_start_time
-                    writing_time_minutes = writing_time_seconds / 60
-                    essay_data_store(student_id.strip(), {
-                        "essay": st.session_state.essay_text,
-                        "writing_time": writing_time_minutes
-                    })
-                    st.session_state.submitted = True
-                    st.session_state.show_submit_confirmation = False
-                    st.session_state.page = "thank_you"
-                    st.rerun()
-            with col_cancel:
-                if st.button("Cancel", key="cancel_submit"):
-                    st.session_state.show_submit_confirmation = False
-                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-
+        submit_confirmation_dialog()
+    
     # Timer logic
     remaining = get_time_remaining()
     timer_placeholder.markdown(
         f"<div class='timer-box'><span id='countdown'>{remaining//60:02}:{remaining%60:02}</span></div>",
         unsafe_allow_html=True
     )
-
+    
     components.html(f"""
     <script>
     const endTime = Date.now() + {remaining * 1000};
@@ -385,6 +383,7 @@ def essay_drafting_page():
     const timerInterval = setInterval(updateTimer, 1000);
     </script>
     """, height=0)
+
 
 def thank_you_page():
     """Display the thank you message after submission."""
